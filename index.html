@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STL File Weight Estimator</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin: 40px; }
+        input { margin: 20px; }
+        #output { font-size: 1.2em; font-weight: bold; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>STL File Weight Estimator</h1>
+    <input type="file" id="stl-file" accept=".stl">
+    <select id="material">
+        <option value="1.24">PLA (1.24 g/cm³)</option>
+        <option value="1.2">ABS (1.2 g/cm³)</option>
+        <option value="1.27">PETG (1.27 g/cm³)</option>
+        <option value="7.9">Steel (7.9 g/cm³)</option>
+    </select>
+    <button id="calculate">Calculate</button>
+    <div id="output"></div>
+
+    <script>
+        document.getElementById("calculate").addEventListener("click", async (event) => {
+            const file = document.getElementById("stl-file").files[0];
+            const density = parseFloat(document.getElementById("material").value);
+            if (file) {
+                document.getElementById("output").innerText = "Processing...";
+                const weight = await calculateWeightFromSTL(file, density);
+                document.getElementById("output").innerText = `Estimated weight: ${weight.toFixed(2)} grams
+                rate: ${(weight * 6).toFixed(2)} Rs`;
+            }
+        });
+
+        async function calculateWeightFromSTL(file, density) {
+            const reader = new FileReader();
+            return new Promise((resolve, reject) => {
+                reader.onload = function(event) {
+                    const buffer = event.target.result;
+                    const volume = calculateVolume(buffer);
+                    const weight = (volume / 1000) * density; // Convert mm³ to cm³ & multiply by density
+                    resolve(weight);
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function calculateVolume(buffer) {
+            const dataView = new DataView(buffer);
+            const isBinary = buffer.byteLength > 84 && !isASCII(buffer);
+            return isBinary ? calculateBinarySTLVolume(dataView) : calculateAsciiSTLVolume(new TextDecoder().decode(buffer));
+        }
+
+        function isASCII(buffer) {
+            return new TextDecoder().decode(buffer.slice(0, 5)).toLowerCase().startsWith("solid");
+        }
+
+        function calculateBinarySTLVolume(dataView) {
+            const numTriangles = dataView.getUint32(80, true);
+            let volume = 0;
+            for (let i = 0; i < numTriangles; i++) {
+                let offset = 84 + i * 50;
+                let v1 = getVertex(dataView, offset + 12);
+                let v2 = getVertex(dataView, offset + 24);
+                let v3 = getVertex(dataView, offset + 36);
+                volume += signedTetrahedronVolume(v1, v2, v3);
+            }
+            return Math.abs(volume);
+        }
+
+        function calculateAsciiSTLVolume(stl) {
+            let volume = 0;
+            const regex = /vertex\s+([-.\d]+)\s+([-.\d]+)\s+([-.\d]+)/g;
+            let match, vertices = [];
+            while ((match = regex.exec(stl)) !== null) {
+                vertices.push([parseFloat(match[1]), parseFloat(match[2]), parseFloat(match[3])]);
+                if (vertices.length === 3) {
+                    volume += signedTetrahedronVolume(vertices[0], vertices[1], vertices[2]);
+                    vertices = [];
+                }
+            }
+            return Math.abs(volume);
+        }
+
+        function getVertex(dataView, offset) {
+            return [dataView.getFloat32(offset, true), dataView.getFloat32(offset + 4, true), dataView.getFloat32(offset + 8, true)];
+        }
+
+        function signedTetrahedronVolume(v1, v2, v3) {
+            return (1 / 6) * Math.abs(
+                v1[0] * (v2[1] * v3[2] - v3[1] * v2[2]) -
+                v1[1] * (v2[0] * v3[2] - v3[0] * v2[2]) +
+                v1[2] * (v2[0] * v3[1] - v3[0] * v2[1])
+            );
+        }
+    </script>
+</body>
+</html>
