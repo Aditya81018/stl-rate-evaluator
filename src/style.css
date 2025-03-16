@@ -1,0 +1,12 @@
+* {
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.container-sm {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  max-width: 480px;
+}
